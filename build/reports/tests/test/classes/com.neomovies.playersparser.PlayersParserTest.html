@@ -41,7 +41,7 @@
 </td>
 <td>
 <div class="infoBox" id="duration">
-<div class="counter">8.956s</div>
+<div class="counter">19.780s</div>
 <p>duration</p>
 </div>
 </td>
@@ -66,6 +66,9 @@
 <li>
 <a href="#tab1">Standard output</a>
 </li>
+<li>
+<a href="#tab2">Standard error</a>
+</li>
 </ul>
 <div id="tab0" class="tab">
 <h2>Tests</h2>
@@ -79,12 +82,12 @@
 </thead>
 <tr>
 <td class="success">testAvailableParsers</td>
-<td class="success">0.005s</td>
+<td class="success">0.003s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">testCollapsDashMode</td>
-<td class="success">0.005s</td>
+<td class="success">0.004s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -94,27 +97,27 @@
 </tr>
 <tr>
 <td class="success">testMovieParsing</td>
-<td class="success">3.343s</td>
+<td class="success">15.732s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">testSearch</td>
-<td class="success">0.804s</td>
+<td class="success">1.064s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">testSeriesInfo</td>
-<td class="success">0.710s</td>
+<td class="success">0.947s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">testSeriesParsing</td>
-<td class="success">0.461s</td>
+<td class="success">0.565s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">testVideoHubVoiceStudios</td>
-<td class="success">3.624s</td>
+<td class="success">1.461s</td>
 <td class="success">passed</td>
 </tr>
 </table>
@@ -143,13 +146,13 @@ Testing rezka...
 
 Testing collaps...
 ✗ collaps: FAILED
-  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+  Ошибка: No valid stream found in embed content. Content length: 0, Contains 'hls': false, Contains 'dash': false
   Детали: URL и плейлист отсутствуют
   ========================================
 
 Testing videohub...
 ✗ videohub: FAILED
-  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+  Ошибка: Failed to fetch data from VideoHUB. URL: https://cors.apn.monster/https://plapi.cdnvideohub.com/api/v1/player/sv/playlist?pub=12&amp;aggr=kp&amp;id=tt1375666
   Детали: URL и плейлист отсутствуют
   ========================================
 
@@ -180,7 +183,7 @@ Sources: rezka -&gt; collaps -&gt; videohub
 Movie: Inception (tt1375666)
 
 ✗ Collaps DASH: FAILED
-  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+  Ошибка: No valid stream found in embed content. Content length: 0, Contains 'hls': false, Contains 'dash': false
   ========================================
 
 === Available Parsers ===
@@ -198,12 +201,25 @@ Searching in rezka...
 ✗ rezka: Результаты не найдены
 
 Searching in collaps...
-✗ collaps: Результаты не найдены
-  Ошибка: A JSONObject text must begin with '{' at 1 [character 2 line 1]
+✓ collaps: Найдено результатов: 2
+  ========================================
+    [1] Название: Начало: Работа на Кобол
+        Год: 2010
+        Тип: film
+        ID: 49794
+        Постер: https://img.imgilall.me/movies/franchise/4/9/7/9/4/0/0/0/0/0/610x900_49794.jpg
+
+    [2] Название: Начало
+        Год: 2010
+        Тип: film
+        ID: 168
+        Постер: https://img.imgilall.me/movies/franchise/1/6/8/0/0/0/0/0/0/0/610x900_168.jpg
+
+  ========================================
 
 Searching in videohub...
 ✗ videohub: Результаты не найдены
-  Ошибка: A JSONObject text must begin with '{' at 1 [character 2 line 1]
+  Ошибка: A JSONObject text must begin with '{' at 0 [character 1 line 1]
 
 
 === Testing Series Parsing ===
@@ -217,7 +233,7 @@ Testing rezka for S1E1...
 
 Testing collaps for S1E1...
 ✗ collaps: FAILED
-  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+  Ошибка: No valid stream found in embed content. Content length: 0, Contains 'hls': false, Contains 'dash': false
   ========================================
 
 Testing videohub for S1E1...
@@ -225,6 +241,91 @@ Testing videohub for S1E1...
   Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
   ========================================
 
+</pre>
+</span>
+</div>
+<div id="tab2" class="tab">
+<h2>Standard error</h2>
+<span class="code">
+<pre>java.net.SocketTimeoutException: timeout
+	at okhttp3.internal.http2.Http2Stream$StreamTimeout.newTimeoutException(Http2Stream.kt:675)
+	at okhttp3.internal.http2.Http2Stream$StreamTimeout.exitAndThrowIfTimedOut(Http2Stream.kt:684)
+	at okhttp3.internal.http2.Http2Stream.takeHeaders(Http2Stream.kt:143)
+	at okhttp3.internal.http2.Http2ExchangeCodec.readResponseHeaders(Http2ExchangeCodec.kt:97)
+	at okhttp3.internal.connection.Exchange.readResponseHeaders(Exchange.kt:110)
+	at okhttp3.internal.http.CallServerInterceptor.intercept(CallServerInterceptor.kt:93)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:34)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall.execute(RealCall.kt:154)
+	at com.neomovies.playersparser.parsers.BaseParser.get(BaseParser.kt:85)
+	at com.neomovies.playersparser.parsers.BaseParser.get$default(BaseParser.kt:50)
+	at com.neomovies.playersparser.parsers.VideoHubParser.getPlayerInternal(VideoHubParser.kt:71)
+	at com.neomovies.playersparser.parsers.VideoHubParser.access$getPlayerInternal(VideoHubParser.kt:15)
+	at com.neomovies.playersparser.parsers.VideoHubParser$getPlayer$result$1.invokeSuspend(VideoHubParser.kt:47)
+	at com.neomovies.playersparser.parsers.VideoHubParser$getPlayer$result$1.invoke(VideoHubParser.kt)
+	at com.neomovies.playersparser.parsers.VideoHubParser$getPlayer$result$1.invoke(VideoHubParser.kt)
+	at com.neomovies.playersparser.core.MemoryCache.get(MemoryCache.kt:39)
+	at com.neomovies.playersparser.parsers.VideoHubParser.getPlayer(VideoHubParser.kt:46)
+	at com.neomovies.playersparser.PlayersParserManager.getPlayer(PlayersParserManager.kt:76)
+	at com.neomovies.playersparser.PlayersParserManager.getPlayer$default(PlayersParserManager.kt:66)
+	at com.neomovies.playersparser.PlayersParserTest$testMovieParsing$1.invokeSuspend(PlayersParserTest.kt:36)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:47)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.neomovies.playersparser.PlayersParserTest.testMovieParsing(PlayersParserTest.kt:25)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:54)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:53)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:92)
+	at jdk.proxy1/jdk.proxy1.$Proxy4.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:181)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:130)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:101)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:61)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:122)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
 </pre>
 </span>
 </div>
@@ -236,7 +337,7 @@ Testing videohub for S1E1...
 <input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
 </label>
 </div>Generated by 
-<a href="http://www.gradle.org">Gradle 8.9</a> at 22 нояб. 2025 г., 23:10:53</p>
+<a href="http://www.gradle.org">Gradle 8.9</a> at 23 нояб. 2025 г., 00:02:12</p>
 </div>
 </div>
 </body>
