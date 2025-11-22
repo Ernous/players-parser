@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "torrent-engine"
+rootProject.name = "players-parser"

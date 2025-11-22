@@ -1,0 +1,103 @@
+
+(=== Testing VideoHUB Voice Studios ===
+"Series: Breaking Bad (tt0903747)
+Season 1, Episode 1
+
+✗ VideoHUB: FAILED
+|  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+,  ========================================
+
+=== Testing Movie Parsing ===
+Movie: Inception (2010)
+IMDB ID: tt1375666
+
+Testing rezka...
+✗ rezka: FAILED
+s  Ошибка: Parse error: A JSONObject text must begin with '{' at 1 [character 2 line 1]. Response: deny host
+@  Детали: URL и плейлист отсутствуют
+,  ========================================
+
+Testing collaps...
+✗ collaps: FAILED
+{  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+@  Детали: URL и плейлист отсутствуют
+,  ========================================
+
+Testing videohub...
+✗ videohub: FAILED
+|  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+@  Детали: URL и плейлист отсутствуют
+,  ========================================
+
+
+=== Testing Series Info ===
+!Series: Breaking Bad (tt0903747)
+
+#Getting series info from rezka...
+H✗ rezka: Информация о сериале недоступна
+
+%Getting series info from collaps...
+J✗ collaps: Информация о сериале недоступна
+
+&Getting series info from videohub...
+K✗ videohub: Информация о сериале недоступна
+
+
+#=== Testing Fallback Strategy ===
+Movie: Inception (tt1375666)
+&Sources: rezka -> collaps -> videohub
+
+T✓ SUCCESS: Получен плеер из одного из источников
+,  ========================================
+C  Плейлист: пуст или не предоставлен
+,  ========================================
+
+#=== Testing Collaps DASH Mode ===
+Movie: Inception (tt1375666)
+
+✗ Collaps DASH: FAILED
+{  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+,  ========================================
+
+=== Available Parsers ===
+
+Registered parsers: 4
+  - rezka
+  - collaps
+  - collaps_dash
+  - videohub
+
+=== Testing Search ===
+Query: Inception
+
+Searching in rezka...
+5✗ rezka: Результаты не найдены
+
+Searching in collaps...
+7✗ collaps: Результаты не найдены
+Q  Ошибка: A JSONObject text must begin with '{' at 1 [character 2 line 1]
+
+Searching in videohub...
+8✗ videohub: Результаты не найдены
+Q  Ошибка: A JSONObject text must begin with '{' at 1 [character 2 line 1]
+
+	
+	 === Testing Series Parsing ===
+	Series: Breaking Bad
+	IMDB ID: tt0903747
+	
+	Testing rezka for S1E1...
+	✗ rezka: FAILED
+	s  Ошибка: Parse error: A JSONObject text must begin with '{' at 1 [character 2 line 1]. Response: deny host
+	,  ========================================
+	
+	Testing collaps for S1E1...
+	✗ collaps: FAILED
+	{  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+	,  ========================================
+	
+	Testing videohub for S1E1...
+	✗ videohub: FAILED
+	|  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+	,  ========================================
+	

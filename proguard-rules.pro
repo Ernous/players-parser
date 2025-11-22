@@ -1,22 +1,36 @@
-# Add project specific ProGuard rules here.
-# Keep LibTorrent4j classes
--keep class org.libtorrent4j.** { *; }
--keepclassmembers class org.libtorrent4j.** { *; }
+# ProGuard rules for Players Parser library
 
-# Keep TorrentEngine public API
--keep public class com.neomovies.torrentengine.TorrentEngine {
+# Keep PlayersParserManager public API
+-keep public class com.neomovies.playersparser.PlayersParserManager {
     public *;
 }
 
-# Keep models
--keep class com.neomovies.torrentengine.models.** { *; }
+# Keep all parser classes
+-keep class com.neomovies.playersparser.parsers.** { *; }
+-keepclassmembers class com.neomovies.playersparser.parsers.** { *; }
 
-# Keep Room database classes
--keep class * extends androidx.room.RoomDatabase
--keep @androidx.room.Entity class *
--dontwarn androidx.room.paging.**
+# Keep all models
+-keep class com.neomovies.playersparser.models.** { *; }
+-keepclassmembers class com.neomovies.playersparser.models.** { *; }
 
-# Gson
+# Keep core infrastructure
+-keep class com.neomovies.playersparser.core.** { *; }
+-keepclassmembers class com.neomovies.playersparser.core.** { *; }
+
+# Keep OkHttp
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+
+# Keep JSON parsing
+-keep class org.json.** { *; }
+-dontwarn org.json.**
+
+# Keep Coroutines
+-keep class kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
+# Gson configuration
 -keepattributes Signature
 -keepattributes *Annotation*
 -dontwarn sun.misc.**

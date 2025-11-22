@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.neomovies.playersparser.PlayersParserTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2025-11-22T21:10:44" hostname="DESKTOP-DCR2B4T" time="8.958">
+  <properties/>
+  <testcase name="testVideoHubVoiceStudios" classname="com.neomovies.playersparser.PlayersParserTest" time="3.624"/>
+  <testcase name="testMovieParsing" classname="com.neomovies.playersparser.PlayersParserTest" time="3.343"/>
+  <testcase name="testSeriesInfo" classname="com.neomovies.playersparser.PlayersParserTest" time="0.71"/>
+  <testcase name="testFallbackStrategy" classname="com.neomovies.playersparser.PlayersParserTest" time="0.004"/>
+  <testcase name="testCollapsDashMode" classname="com.neomovies.playersparser.PlayersParserTest" time="0.005"/>
+  <testcase name="testAvailableParsers" classname="com.neomovies.playersparser.PlayersParserTest" time="0.005"/>
+  <testcase name="testSearch" classname="com.neomovies.playersparser.PlayersParserTest" time="0.804"/>
+  <testcase name="testSeriesParsing" classname="com.neomovies.playersparser.PlayersParserTest" time="0.461"/>
+  <system-out><![CDATA[
+=== Testing VideoHUB Voice Studios ===
+Series: Breaking Bad (tt0903747)
+Season 1, Episode 1
+
+✗ VideoHUB: FAILED
+  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+  ========================================
+
+=== Testing Movie Parsing ===
+Movie: Inception (2010)
+IMDB ID: tt1375666
+
+Testing rezka...
+✗ rezka: FAILED
+  Ошибка: Parse error: A JSONObject text must begin with '{' at 1 [character 2 line 1]. Response: deny host
+  Детали: URL и плейлист отсутствуют
+  ========================================
+
+Testing collaps...
+✗ collaps: FAILED
+  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+  Детали: URL и плейлист отсутствуют
+  ========================================
+
+Testing videohub...
+✗ videohub: FAILED
+  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+  Детали: URL и плейлист отсутствуют
+  ========================================
+
+
+=== Testing Series Info ===
+Series: Breaking Bad (tt0903747)
+
+Getting series info from rezka...
+✗ rezka: Информация о сериале недоступна
+
+Getting series info from collaps...
+✗ collaps: Информация о сериале недоступна
+
+Getting series info from videohub...
+✗ videohub: Информация о сериале недоступна
+
+
+=== Testing Fallback Strategy ===
+Movie: Inception (tt1375666)
+Sources: rezka -> collaps -> videohub
+
+✓ SUCCESS: Получен плеер из одного из источников
+  ========================================
+  Плейлист: пуст или не предоставлен
+  ========================================
+
+=== Testing Collaps DASH Mode ===
+Movie: Inception (tt1375666)
+
+✗ Collaps DASH: FAILED
+  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+  ========================================
+
+=== Available Parsers ===
+
+Registered parsers: 4
+  - rezka
+  - collaps
+  - collaps_dash
+  - videohub
+
+=== Testing Search ===
+Query: Inception
+
+Searching in rezka...
+✗ rezka: Результаты не найдены
+
+Searching in collaps...
+✗ collaps: Результаты не найдены
+  Ошибка: A JSONObject text must begin with '{' at 1 [character 2 line 1]
+
+Searching in videohub...
+✗ videohub: Результаты не найдены
+  Ошибка: A JSONObject text must begin with '{' at 1 [character 2 line 1]
+
+
+=== Testing Series Parsing ===
+Series: Breaking Bad
+IMDB ID: tt0903747
+
+Testing rezka for S1E1...
+✗ rezka: FAILED
+  Ошибка: Parse error: A JSONObject text must begin with '{' at 1 [character 2 line 1]. Response: deny host
+  ========================================
+
+Testing collaps for S1E1...
+✗ collaps: FAILED
+  Ошибка: No valid stream found in embed content. Content length: 33, Contains 'hls': false, Contains 'dash': false
+  ========================================
+
+Testing videohub for S1E1...
+✗ videohub: FAILED
+  Ошибка: Failed to parse JSON response: A JSONObject text must begin with '{' at 0 [character 1 line 1]. Response: 
+  ========================================
+
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,19 +1,18 @@
-# TorrentEngine Library
+# Players Parser
 
-Android торрент движок на основе LibTorrent4j для простой интеграции торрент функционала в любое приложение.
+Мощная Kotlin библиотека для парсинга видео плееров и потоковых источников. Полная реализация логики из Lampac проекта с поддержкой Rezka, Collaps (DASH/HLS) и VideoHUB.
 
-[![](https://jitpack.io/v/Ernous/torrent-engine.svg)](https://jitpack.io/#Ernous/torrent-engine)
+[![](https://jitpack.io/v/Ernous/players-parser.svg)](https://jitpack.io/#Ernous/players-parser)
 
 ## Установка
 
 ### Шаг 1: Добавьте JitPack репозиторий
 
-В файл `settings.gradle.kts` (или `build.gradle` для старых проектов):
+В файл `settings.gradle.kts`:
 
 ```kotlin
 dependencyResolutionManagement {
     repositories {
-        google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
     }
@@ -22,28 +21,12 @@ dependencyResolutionManagement {
 
 ### Шаг 2: Добавьте зависимость
 
-В файл `app/build.gradle.kts`:
+В файл `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.Ernous:torrent-engine:1.0.0")
+    implementation("com.github.Ernous:players-parser:1.0.0")
 }
-```
-
-Или используйте последнюю версию из main ветки:
-
-```kotlin
-dependencies {
-    implementation("com.github.Ernous:torrent-engine:main-SNAPSHOT")
-}
-```
-
-### 3. Добавьте permissions в `AndroidManifest.xml`:
-
-```xml
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 ```
 
 ## Использование
@@ -51,176 +34,177 @@ dependencies {
 ### Инициализация
 
 ```kotlin
-val torrentEngine = TorrentEngine.getInstance(context)
-torrentEngine.startStatsUpdater() // Запустить обновление статистики
+val manager = PlayersParserManager()
 ```
 
-### Добавление торрента
+### Поиск контента
 
 ```kotlin
-lifecycleScope.launch {
-    try {
-        val magnetUri = "magnet:?xt=urn:btih:..."
-        val savePath = "${context.getExternalFilesDir(null)}/downloads"
-        
-        val infoHash = torrentEngine.addTorrent(magnetUri, savePath)
-        Log.d("Torrent", "Added: $infoHash")
-    } catch (e: Exception) {
-        Log.e("Torrent", "Failed to add", e)
-    }
+// Поиск в конкретном источнике
+val results = manager.search("rezka", "Inception")
+results.results.forEach { result ->
+    println("${result.name} (${result.year}) - ${result.type}")
+}
+
+// Поиск во всех источниках
+val allResults = manager.searchInAllSources("Breaking Bad")
+allResults.forEach { (source, response) ->
+    println("$source: ${response.results.size} results")
 }
 ```
 
-### Получение списка торрентов (реактивно)
+### Получение плеера
 
 ```kotlin
-lifecycleScope.launch {
-    torrentEngine.getAllTorrentsFlow().collect { torrents ->
-        torrents.forEach { torrent ->
-            println("${torrent.name}: ${torrent.progress * 100}%")
-            println("Speed: ${torrent.downloadSpeed} B/s")
-            println("Peers: ${torrent.numPeers}, Seeds: ${torrent.numSeeds}")
-            println("ETA: ${torrent.getFormattedEta()}")
-        }
-    }
+// Получить плеер из конкретного источника
+val player = manager.getPlayer(
+    source = "rezka",
+    id = "inception-2010",
+    type = "movie"
+)
+
+if (player.success) {
+    println("URL: ${player.url}")
+}
+
+// Получить плеер из первого доступного источника (fallback)
+val player = manager.getPlayerFromMultipleSources(
+    sources = listOf("rezka", "collaps", "videohub"),
+    id = "tt0903747",
+    type = "series",
+    season = 1,
+    episode = 1
+)
+```
+
+### Информация о сериалах
+
+```kotlin
+val seriesInfo = manager.getSeriesInfo("rezka", "breaking-bad")
+seriesInfo?.forEach { (season, episodes) ->
+    println("Season $season: ${episodes.size} episodes")
 }
 ```
 
-### Управление файлами в раздаче
+### Кастомные настройки
 
 ```kotlin
-lifecycleScope.launch {
-    // Получить информацию о торренте
-    val torrent = torrentEngine.getTorrent(infoHash)
-    
-    torrent?.files?.forEachIndexed { index, file ->
-        println("File $index: ${file.path} (${file.size} bytes)")
-        
-        // Выбрать только видео файлы
-        if (file.isVideo()) {
-            torrentEngine.setFilePriority(infoHash, index, FilePriority.HIGH)
-        } else {
-            torrentEngine.setFilePriority(infoHash, index, FilePriority.DONT_DOWNLOAD)
-        }
-    }
-}
-```
+// Rezka с кастомными параметрами
+val rezkaSettings = RezkaSettings(
+    host = "https://hdrezka.ag",
+    login = "your_login",
+    passwd = "your_password",
+    ajax = true,  // Использовать AJAX режим
+    proxies = listOf("http://proxy1:8080", "http://proxy2:8080")
+)
+manager.registerRezka(rezkaSettings)
 
-### Пауза/Возобновление/Удаление
+// Collaps с токеном (токен уже встроен из Lampac)
+val collapsSettings = CollapsSettings(
+    apiHost = "https://api.bhcesh.me",
+    token = "eedefb541aeba871dcfc756e6b31c02e",
+    useDash = false,
+    two = true,  // Режим two
+    reserve = false,
+    vast = false
+)
+manager.registerCollaps(collapsSettings)
 
-```kotlin
-lifecycleScope.launch {
-    // Поставить на паузу
-    torrentEngine.pauseTorrent(infoHash)
-    
-    // Возобновить
-    torrentEngine.resumeTorrent(infoHash)
-    
-    // Удалить (с файлами или без)
-    torrentEngine.removeTorrent(infoHash, deleteFiles = true)
-}
-```
-
-### Множественное изменение приоритетов
-
-```kotlin
-lifecycleScope.launch {
-    val priorities = mapOf(
-        0 to FilePriority.MAXIMUM,  // Первый файл - максимальный приоритет
-        1 to FilePriority.HIGH,      // Второй - высокий
-        2 to FilePriority.DONT_DOWNLOAD // Третий - не загружать
-    )
-    
-    torrentEngine.setFilePriorities(infoHash, priorities)
-}
+// VideoHUB с кастомным pubId (pubId = 12 из Lampac)
+val videoHubSettings = VideoHubSettings(
+    apiHost = "https://videohub.ru",
+    pubId = "12"
+)
+manager.registerVideoHub(videoHubSettings)
 ```
 
 ## Модели данных
 
-### TorrentInfo
+### PlayerResponse
 
 ```kotlin
-data class TorrentInfo(
-    val infoHash: String,
-    val magnetUri: String,
-    val name: String,
-    val totalSize: Long,
-    val downloadedSize: Long,
-    val uploadedSize: Long,
-    val downloadSpeed: Int,
-    val uploadSpeed: Int,
-    val progress: Float,
-    val state: TorrentState,
-    val numPeers: Int,
-    val numSeeds: Int,
-    val savePath: String,
-    val files: List<TorrentFile>,
-    val addedDate: Long,
-    val finishedDate: Long?,
-    val error: String?
+data class PlayerResponse(
+    val url: String? = null,
+    val urls: List<String>? = null,
+    val playlist: List<PlaylistItem>? = null,
+    val error: String? = null,
+    val success: Boolean = true
 )
 ```
 
-### TorrentState
+### SearchResult
 
 ```kotlin
-enum class TorrentState {
-    STOPPED,
-    QUEUED,
-    METADATA_DOWNLOADING,
-    CHECKING,
-    DOWNLOADING,
-    SEEDING,
-    FINISHED,
-    ERROR
-}
+data class SearchResult(
+    val id: String,
+    val name: String,
+    val type: String, // "movie" или "series"
+    val year: Int? = null,
+    val poster: String? = null
+)
 ```
 
-### FilePriority
+### PlaylistItem
 
 ```kotlin
-enum class FilePriority(val value: Int) {
-    DONT_DOWNLOAD(0),  // Не загружать
-    LOW(1),            // Низкий приоритет
-    NORMAL(4),         // Обычный (по умолчанию)
-    HIGH(6),           // Высокий
-    MAXIMUM(7)         // Максимальный (загружать первым)
-}
+data class PlaylistItem(
+    val url: String,
+    val quality: String? = null,
+    val type: String? = null // "video", "audio", "subtitle", "hls", "dash"
+)
 ```
 
-## Foreground Service
+## Примеры
 
-Сервис автоматически запускается при добавлении торрента и показывает постоянное уведомление с:
-- Количеством активных торрентов
-- Общей скоростью загрузки/отдачи
-- Списком загружающихся файлов с прогрессом
-- Кнопками управления (Pause All)
+Смотрите файл `Example.kt` для полных примеров использования.
 
-Уведомление **нельзя закрыть** пока есть активные торренты.
+## Архитектура
 
-## Персистентность
-
-Все торренты сохраняются в Room database и автоматически восстанавливаются при перезапуске приложения.
-
-### Проверка видео файлов
-
-```kotlin
-val videoFiles = torrent.files.filter { it.isVideo() }
+### Структура проекта
+```
+src/main/java/com/neomovies/playersparser/
+├── core/
+│   ├── ProxyManager.kt          # Управление прокси с fallback
+│   └── MemoryCache.kt           # In-memory кэш с TTL
+├── models/
+│   ├── PlayerResponse.kt        # Основные модели ответов
+│   ├── RezkaModels.kt           # Модели для Rezka парсера
+│   ├── CollapsModels.kt         # Модели для Collaps парсера
+│   └── VideoHubModels.kt        # Модели для VideoHUB парсера
+├── parsers/
+│   ├── BaseParser.kt            # Базовый класс с HTTP логикой
+│   ├── RezkaParser.kt           # Парсер для HDRezka
+│   ├── CollapsParser.kt         # Парсер для Collaps
+│   └── VideoHubParser.kt        # Парсер для VideoHUB
+├── PlayersParserManager.kt      # Главный менеджер парсеров
+└── Example.kt                   # Примеры использования
 ```
 
-### Получение share ratio
+### Ключевые особенности
 
-```kotlin
-val ratio = torrent.getShareRatio()
-```
+- **Полная совместимость с Lampac**: Все токены и параметры взяты прямо из Lampac проекта
+- **Асинхронность**: Все операции используют Kotlin coroutines (suspend функции)
+- **Кэширование**: In-memory кэш с TTL для оптимизации производительности
+- **Proxy поддержка**: Встроенная поддержка HTTP прокси с fallback стратегией
+- **Расширенные headers**: Поддержка X-Real-IP, X-Forwarded-For, X-App-Hdrezka-App
+- **Потокобезопасность**: Использование Mutex для синхронизации доступа к кэшу
 
-### Подсчет выбранных файлов
+## Зависимости
 
-```kotlin
-val selectedCount = torrent.getSelectedFilesCount()
-val selectedSize = torrent.getSelectedSize()
-```
+- **Kotlin**: 2.1.0
+- **OkHttp3**: 4.12.0 (HTTP клиент)
+- **org.json**: 20240303 (JSON парсинг)
+- **Coroutines**: 1.10.1 (асинхронные операции)
+- **Gson**: 2.11.0 (JSON сериализация)
 
-[Apache License 2.0](LICENSE).
+## Лицензия
 
-Made with <3 by Erno/Foxix
+[Apache 2.0](LICENSE)
+
+## Автор
+
+Erno
+
+## Благодарности
+
+Спасибо проекту [Lampac](https://github.com/immisterio/Lampac).
