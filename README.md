@@ -1,8 +1,18 @@
 # Players Parser
 
-Мощная Kotlin библиотека для парсинга видео плееров и потоковых источников. Полная реализация логики из Lampac проекта с поддержкой Rezka, Collaps (DASH/HLS) и VideoHUB.
+Kotlin библиотека для парсинга видео плееров и потоковых источников. Полная реализация логики из проекта **Lampac** и **go-hdrezka**, адаптированная под JVM/Android.
+
+Поддерживает обход защиты (Cloudflare/DDoS-Guard) через эмуляцию браузерных сессий, умное декодирование ссылок ("trash" decoder) и извлечение HLS/DASH потоков.
 
 [![](https://jitpack.io/v/Ernous/players-parser.svg)](https://jitpack.io/#Ernous/players-parser)
+
+## Поддерживаемые источники
+
+| Источник | Тип | Возможности                                                                             |
+|----------|-----|-----------------------------------------------------------------------------------------|
+| **HDRezka** | HTML/AJAX | Поиск, Сериалы/Фильмы, 720p, Выбор озвучки, **Smart Trash Decoder**, **Cookie Session** |
+| **Collaps** | API/Iframe | DASH/HLS, Выбор качества, Авто-выбор лучшего потока                                     |
+| **VideoHUB** | API | Прямые ссылки, JSON API, CDN Video Hub                                                  |
 
 ## Установка
 
@@ -31,171 +41,102 @@ dependencies {
 
 ## Использование
 
-### Инициализация
+### 1. Инициализация
+
+Вы можете использовать отдельные парсеры или общий менеджер.
 
 ```kotlin
-val manager = PlayersParserManager()
+// Для Rezka рекомендуется указывать рабочее зеркало
+val rezkaSettings = RezkaSettings(baseUrl = "https://hdrezka.me")
+val rezkaParser = RezkaParser(rezkaSettings)
+
+val collapsParser = CollapsParser()
 ```
 
-### Поиск контента
+### 2. Поиск контента
 
 ```kotlin
-// Поиск в конкретном источнике
-val results = manager.search("rezka", "Inception")
-results.results.forEach { result ->
-    println("${result.name} (${result.year}) - ${result.type}")
-}
+val query = "Во все тяжкие"
+val searchResponse = rezkaParser.search(query)
 
-// Поиск во всех источниках
-val allResults = manager.searchInAllSources("Breaking Bad")
-allResults.forEach { (source, response) ->
-    println("$source: ${response.results.size} results")
+if (searchResponse.error == null) {
+    searchResponse.results.forEach { item ->
+        // Приведение типа к конкретной модели парсера
+        if (item is RezkaSearchItem) {
+            println("Found: ${item.title} (${item.year}) - ${item.url}")
+        }
+    }
 }
 ```
 
-### Получение плеера
+### 3. Получение потока (Плеер)
+
+Библиотека автоматически обрабатывает шифрование ссылок и сессии.
 
 ```kotlin
-// Получить плеер из конкретного источника
-val player = manager.getPlayer(
-    source = "rezka",
-    id = "inception-2010",
-    type = "movie"
-)
-
-if (player.success) {
-    println("URL: ${player.url}")
-}
-
-// Получить плеер из первого доступного источника (fallback)
-val player = manager.getPlayerFromMultipleSources(
-    sources = listOf("rezka", "collaps", "videohub"),
-    id = "tt0903747",
-    type = "series",
+val response = rezkaParser.getPlayer(
+    id = "https://hdrezka.me/series/thriller/646-vo-vse-tyazhkie-2008-latest.html", // URL или ID
+    type = "series", // "movie" или "series"
     season = 1,
     episode = 1
 )
+
+if (response.success) {
+    println("Main Stream: ${response.url}")
+    
+    // Список доступных качеств
+    response.playlist?.forEach { stream ->
+        println("- [${stream.quality}] ${stream.type}: ${stream.url}")
+    }
+} else {
+    println("Error: ${response.error}")
+}
 ```
 
-### Информация о сериалах
+### 4. Информация о сериалах
+
+Получение списка сезонов и эпизодов (для Collaps и VideoHub).
 
 ```kotlin
-val seriesInfo = manager.getSeriesInfo("rezka", "breaking-bad")
+val seriesInfo = collapsParser.getSeriesInfo("464963") // Kinopoisk ID
 seriesInfo?.forEach { (season, episodes) ->
     println("Season $season: ${episodes.size} episodes")
 }
 ```
 
-### Кастомные настройки
+## Особенности реализации
 
-```kotlin
-// Rezka с кастомными параметрами
-val rezkaSettings = RezkaSettings(
-    host = "https://hdrezka.ag",
-    login = "your_login",
-    passwd = "your_password",
-    ajax = true,  // Использовать AJAX режим
-    proxies = listOf("http://proxy1:8080", "http://proxy2:8080")
-)
-manager.registerRezka(rezkaSettings)
+*   **Rezka Smart Decoder**: Реализован алгоритм декодирования ссылок `#h...` с поддержкой удаления "мусорных" строк и Base64 (порт логики из `go-hdrezka`).
+*   **Session Management**: Используется `CookieJar` для сохранения сессионных кук (`hdmbbs`, `dle_user_taken`, `PHPSESSID`) между запросами, что позволяет обходить защиту "Время сессии истекло".
+*   **Inline Extraction**: Парсер умеет извлекать ссылки прямо из HTML страницы (через `initCDN...` скрипты), минимизируя количество сетевых запросов.
+*   **Headers Spoofing**: Эмуляция заголовков официальных приложений и браузеров.
 
-// Collaps с токеном (токен уже встроен из Lampac)
-val collapsSettings = CollapsSettings(
-    apiHost = "https://api.bhcesh.me",
-    token = "eedefb541aeba871dcfc756e6b31c02e",
-    useDash = false,
-    two = true,  // Режим two
-    reserve = false,
-    vast = false
-)
-manager.registerCollaps(collapsSettings)
+## Структура проекта
 
-// VideoHUB с кастомным pubId (pubId = 12 из Lampac)
-val videoHubSettings = VideoHubSettings(
-    apiHost = "https://videohub.ru",
-    pubId = "12"
-)
-manager.registerVideoHub(videoHubSettings)
-```
-
-## Модели данных
-
-### PlayerResponse
-
-```kotlin
-data class PlayerResponse(
-    val url: String? = null,
-    val urls: List<String>? = null,
-    val playlist: List<PlaylistItem>? = null,
-    val error: String? = null,
-    val success: Boolean = true
-)
-```
-
-### SearchResult
-
-```kotlin
-data class SearchResult(
-    val id: String,
-    val name: String,
-    val type: String, // "movie" или "series"
-    val year: Int? = null,
-    val poster: String? = null
-)
-```
-
-### PlaylistItem
-
-```kotlin
-data class PlaylistItem(
-    val url: String,
-    val quality: String? = null,
-    val type: String? = null // "video", "audio", "subtitle", "hls", "dash"
-)
-```
-
-## Примеры
-
-Смотрите файл `Example.kt` для полных примеров использования.
-
-## Архитектура
-
-### Структура проекта
 ```
 src/main/java/com/neomovies/playersparser/
-├── core/
-│   ├── ProxyManager.kt          # Управление прокси с fallback
-│   └── MemoryCache.kt           # In-memory кэш с TTL
 ├── models/
-│   ├── PlayerResponse.kt        # Основные модели ответов
-│   ├── RezkaModels.kt           # Модели для Rezka парсера
-│   ├── CollapsModels.kt         # Модели для Collaps парсера
-│   └── VideoHubModels.kt        # Модели для VideoHUB парсера
+│   ├── CommonModels.kt          # Общие модели (PlayerResponse, PlaylistItem)
+│   ├── RezkaModels.kt           # Модели и Decoder для Rezka
+│   └── CollapsModels.kt         # Модели для Collaps
 ├── parsers/
-│   ├── BaseParser.kt            # Базовый класс с HTTP логикой
-│   ├── RezkaParser.kt           # Парсер для HDRezka
-│   ├── CollapsParser.kt         # Парсер для Collaps
-│   └── VideoHubParser.kt        # Парсер для VideoHUB
-├── PlayersParserManager.kt      # Главный менеджер парсеров
-└── Example.kt                   # Примеры использования
+│   ├── BaseParser.kt            # Базовый HTTP клиент с OkHttp
+│   ├── RezkaParser.kt           # Парсер HDRezka (Cookies + Regex + AJAX)
+│   ├── CollapsParser.kt         # Парсер Collaps (Iframe extraction)
+│   └── VideoHubParser.kt        # Парсер VideoHUB
+└── PlayersParserManager.kt      # Фасад (опционально)
 ```
-
-### Ключевые особенности
-
-- **Полная совместимость с Lampac**: Все токены и параметры взяты прямо из Lampac проекта
-- **Асинхронность**: Все операции используют Kotlin coroutines (suspend функции)
-- **Кэширование**: In-memory кэш с TTL для оптимизации производительности
-- **Proxy поддержка**: Встроенная поддержка HTTP прокси с fallback стратегией
-- **Расширенные headers**: Поддержка X-Real-IP, X-Forwarded-For, X-App-Hdrezka-App
-- **Потокобезопасность**: Использование Mutex для синхронизации доступа к кэшу
 
 ## Зависимости
 
 - **Kotlin**: 2.1.0
-- **OkHttp3**: 4.12.0 (HTTP клиент)
-- **org.json**: 20240303 (JSON парсинг)
-- **Coroutines**: 1.10.1 (асинхронные операции)
-- **Gson**: 2.11.0 (JSON сериализация)
+- **OkHttp3**: 4.12.0 (HTTP/2, CookieJar, Interceptors)
+- **org.json**: 20240303 (Легковесный JSON парсинг)
+- **Coroutines**: 1.10.1 (Асинхронность)
+
+## Благодарности
+*   **[immisterio/Lampac](https://github.com/immisterio/Lampac)**
+*   **[n0madic/go-hdrezka](https://github.com/n0madic/go-hdrezka)**
 
 ## Лицензия
 
@@ -204,7 +145,3 @@ src/main/java/com/neomovies/playersparser/
 ## Автор
 
 Erno
-
-## Благодарности
-
-Спасибо проекту [Lampac](https://github.com/immisterio/Lampac).

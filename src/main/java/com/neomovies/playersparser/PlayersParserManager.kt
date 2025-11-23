@@ -1,67 +1,84 @@
 package com.neomovies.playersparser
 
 import com.neomovies.playersparser.models.*
-import com.neomovies.playersparser.parsers.BaseParser
-import com.neomovies.playersparser.parsers.CollapsParser
-import com.neomovies.playersparser.parsers.RezkaParser
-import com.neomovies.playersparser.parsers.VideoHubParser
-import okhttp3.OkHttpClient
+import com.neomovies.playersparser.parsers.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 
 /**
- * Менеджер для управления всеми парсерами плееров
- * Предоставляет единый интерфейс для работы с разными источниками
+ * Главный менеджер для управления всеми парсерами.
+ * Предоставляет единую точку входа для поиска и получения ссылок.
  */
-class PlayersParserManager(
-    private val client: OkHttpClient? = null
-) {
-    private val parsers = mutableMapOf<String, BaseParser>()
+class PlayersParserManager {
 
-    init {
-        // Инициализируем парсеры с настройками по умолчанию
-        registerParser("rezka", RezkaParser(client = client))
-        registerParser("collaps", CollapsParser(settings = CollapsSettings(useDash = false), client = client))
-        registerParser("collaps_dash", CollapsParser(settings = CollapsSettings(useDash = true), client = client))
-        registerParser("videohub", VideoHubParser(client = client))
-    }
+    // Экземпляры парсеров
+    private var rezkaParser: RezkaParser = RezkaParser()
+    private var collapsParser: CollapsParser = CollapsParser()
+    private var videoHubParser: VideoHubParser = VideoHubParser()
+
+    // --- Конфигурация ---
 
     /**
-     * Зарегистрировать парсер Rezka с кастомными настройками
+     * Обновить настройки для HDRezka
      */
     fun registerRezka(settings: RezkaSettings) {
-        registerParser("rezka", RezkaParser(settings = settings))
+        this.rezkaParser = RezkaParser(settings)
     }
 
     /**
-     * Зарегистрировать парсер Collaps с кастомными настройками
+     * Обновить настройки для Collaps
      */
-    fun registerCollaps(settings: CollapsSettings, isDash: Boolean = false) {
-        val key = if (isDash) "collaps_dash" else "collaps"
-        registerParser(key, CollapsParser(settings = settings))
+    fun registerCollaps(settings: CollapsSettings) {
+        this.collapsParser = CollapsParser(settings)
     }
 
     /**
-     * Зарегистрировать парсер VideoHUB с кастомными настройками
+     * Обновить настройки для VideoHub
      */
     fun registerVideoHub(settings: VideoHubSettings) {
-        registerParser("videohub", VideoHubParser(settings = settings))
+        this.videoHubParser = VideoHubParser(settings)
     }
 
+    // --- Поиск ---
+
     /**
-     * Зарегистрировать новый парсер
+     * Поиск контента в конкретном источнике
+     * @param source Название источника ("rezka", "collaps", "videohub")
      */
-    fun registerParser(name: String, parser: BaseParser) {
-        parsers[name.lowercase()] = parser
+    suspend fun search(source: String, query: String): SearchResponse = withContext(Dispatchers.IO) {
+        when (source.lowercase()) {
+            "rezka" -> rezkaParser.search(query)
+            "collaps" -> collapsParser.search(query)
+            "videohub" -> videoHubParser.search(query)
+            else -> SearchResponse(emptyList(), "Unknown source: $source")
+        }
     }
 
     /**
-     * Получить парсер по имени
+     * Поиск сразу во всех источниках параллельно.
+     * @return Map, где ключ - название источника, значение - результат поиска.
      */
-    fun getParser(name: String): BaseParser? {
-        return parsers[name.lowercase()]
+    suspend fun searchInAllSources(query: String): Map<String, SearchResponse> = coroutineScope {
+        // Запускаем запросы параллельно
+        val rezkaDeferred = async(Dispatchers.IO) { "rezka" to rezkaParser.search(query) }
+        val collapsDeferred = async(Dispatchers.IO) { "collaps" to collapsParser.search(query) }
+        val videoHubDeferred = async(Dispatchers.IO) { "videohub" to videoHubParser.search(query) }
+
+        // Собираем результаты
+        mapOf(
+            rezkaDeferred.await(),
+            collapsDeferred.await(),
+            videoHubDeferred.await()
+        )
     }
 
+    // --- Получение плеера ---
+
     /**
-     * Получить плеер из конкретного источника
+     * Получить плеер из конкретного источника.
+     * @param id ID контента (Для Rezka это URL, для Collaps - Kinopoisk ID)
      */
     suspend fun getPlayer(
         source: String,
@@ -69,91 +86,72 @@ class PlayersParserManager(
         type: String = "movie",
         season: Int? = null,
         episode: Int? = null
-    ): PlayerResponse {
-        val parser = getParser(source)
-            ?: return PlayerResponse(error = "Parser '$source' not found")
-
-        return parser.getPlayer(id, type, season, episode)
+    ): PlayerResponse = withContext(Dispatchers.IO) {
+        when (source.lowercase()) {
+            "rezka" -> rezkaParser.getPlayer(id, type, season, episode)
+            "collaps" -> collapsParser.getPlayer(id, type, season, episode)
+            "videohub" -> videoHubParser.getPlayer(id, type, season, episode)
+            else -> PlayerResponse(success = false, error = "Unknown source: $source")
+        }
     }
 
     /**
-     * Получить плеер из первого доступного источника
-     * Пытается несколько источников по порядку
+     * Пытается получить плеер, перебирая список источников по очереди.
+     * Полезно, если один источник не работает или заблокирован.
+     *
+     * @param sources Список источников в порядке приоритета (например: ["collaps", "rezka"])
+     * @param idMap Map с ID для разных источников. Например: {"collaps": "KP_ID", "rezka": "URL"}
+     *              Если передать просто строку в 'defaultId', она будет использоваться для всех,
+     *              но это сработает только если ID совместимы (например, KP ID для Collaps и VideoHub).
      */
     suspend fun getPlayerFromMultipleSources(
         sources: List<String>,
-        id: String,
+        defaultId: String,
         type: String = "movie",
         season: Int? = null,
-        episode: Int? = null
+        episode: Int? = null,
+        specificIds: Map<String, String> = emptyMap() // Переопределение ID для конкретных источников
     ): PlayerResponse {
+        var lastError: String? = null
+
         for (source in sources) {
-            val result = getPlayer(source, id, type, season, episode)
-            if (result.success && (result.url != null || result.playlist != null)) {
-                return result
+            // Выбираем ID: либо специфичный для источника, либо общий
+            val id = specificIds[source] ?: defaultId
+
+            // Rezka требует URL, а не KP ID. Если передан KP ID в rezka, пропускаем, чтобы не получить ошибку 404,
+            // если только пользователь явно не передал URL в specificIds.
+            if (source == "rezka" && !id.contains("http") && !id.contains(".html")) {
+                // Можно добавить логику авто-поиска здесь, но пока просто пропустим
+                // или попробуем, вдруг ID это URL
+            }
+
+            val response = getPlayer(source, id, type, season, episode)
+            if (response.success) {
+                return response // Успех! Возвращаем результат
+            } else {
+                lastError = "$source error: ${response.error}"
             }
         }
 
-        return PlayerResponse(error = "No working sources found")
+        return PlayerResponse(success = false, error = lastError ?: "All sources failed")
     }
 
-    /**
-     * Поиск контента в конкретном источнике
-     */
-    suspend fun search(
-        source: String,
-        query: String
-    ): SearchResponse {
-        val parser = getParser(source)
-            ?: return SearchResponse(
-                results = emptyList(),
-                error = "Parser '$source' not found"
-            )
-
-        return parser.search(query)
-    }
+    // --- Информация о сериалах ---
 
     /**
-     * Поиск контента во всех источниках
+     * Получить список сезонов и эпизодов (поддерживается Collaps и VideoHub, частично Rezka)
      */
-    suspend fun searchInAllSources(query: String): Map<String, SearchResponse> {
-        val results = mutableMapOf<String, SearchResponse>()
-
-        for ((name, parser) in parsers) {
-            try {
-                results[name] = parser.search(query)
-            } catch (e: Exception) {
-                results[name] = SearchResponse(
-                    results = emptyList(),
-                    error = e.message ?: "Unknown error"
-                )
-            }
-        }
-
-        return results
-    }
-
-    /**
-     * Получить список доступных парсеров
-     */
-    fun getAvailableParsers(): List<String> {
-        return parsers.keys.toList()
-    }
-
-    /**
-     * Получить информацию о сериале (сезоны и эпизоды)
-     */
-    suspend fun getSeriesInfo(
-        source: String,
-        id: String
-    ): Map<Int, List<Int>>? {
-        val parser = getParser(source) ?: return null
-
-        return when (parser) {
-            is RezkaParser -> parser.getSeriesInfo(id)
-            is CollapsParser -> parser.getSeriesInfo(id)
-            is VideoHubParser -> parser.getSeriesInfo(id)
+    suspend fun getSeriesInfo(source: String, id: String): Map<Int, List<Int>>? = withContext(Dispatchers.IO) {
+        when (source.lowercase()) {
+            "collaps" -> collapsParser.getSeriesInfo(id)
+            "videohub" -> videoHubParser.getSeriesInfo(id)
+            "rezka" -> rezkaParser.getSeriesInfo(id)
             else -> null
         }
     }
+
+
+    fun getRezkaParser() = rezkaParser
+    fun getCollapsParser() = collapsParser
+    fun getVideoHubParser() = videoHubParser
 }

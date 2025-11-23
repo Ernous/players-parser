@@ -1,119 +1,88 @@
 package com.neomovies.playersparser.parsers
 
-import com.neomovies.playersparser.core.MemoryCache
-import com.neomovies.playersparser.core.ProxyManager
 import com.neomovies.playersparser.models.*
-import okhttp3.OkHttpClient
+import okhttp3.*
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
-/**
- * Парсер для HDRezka
- * Поддерживает фильмы и сериалы с поиском, авторизацией, прокси и кэшем
- */
 class RezkaParser(
     private val settings: RezkaSettings = RezkaSettings(),
     client: OkHttpClient? = null
 ) : BaseParser(client ?: createDefaultClient()) {
 
-    private val proxyManager = ProxyManager(settings.proxies)
-
     companion object {
+        private val cookieStore = HashMap<String, MutableList<Cookie>>()
+
         private fun createDefaultClient(): OkHttpClient {
             return OkHttpClient.Builder()
-                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .cookieJar(object : CookieJar {
+                    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+                        val existing = cookieStore[url.host] ?: ArrayList()
+                        for (cookie in cookies) {
+                            existing.removeIf { it.name == cookie.name }
+                            existing.add(cookie)
+                        }
+                        cookieStore[url.host] = existing
+                    }
+
+                    override fun loadForRequest(url: HttpUrl): List<Cookie> {
+                        val cookies = cookieStore[url.host] ?: ArrayList()
+                        val result = ArrayList(cookies)
+
+                        // Принудительные куки (как в Lampac)
+                        val forcedCookies = listOf(
+                            Cookie.Builder().name("hdmbbs").value("1").domain(url.host).build(),
+                            Cookie.Builder().name("dle_user_taken").value("1").domain(url.host).build()
+                        )
+                        for (forced in forcedCookies) {
+                            if (result.none { it.name == forced.name }) result.add(forced)
+                        }
+                        return result
+                    }
+                })
+                .followRedirects(true)
+                .followSslRedirects(true)
                 .build()
         }
-
-        private fun normalizeSearchName(name: String): String {
-            return name.lowercase()
-                .replace(Regex("[^a-zа-яё0-9]"), "")
-                .trim()
-        }
     }
 
-    /**
-     * Поиск контента на Rezka
-     * Реализует полную логику из Lampac/Shared/Engine/Online/Rezka.cs
-     */
+    private fun getPageHeaders(): Headers {
+        return Headers.Builder()
+            .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+            .add("X-App-Hdrezka-App", "1")
+            .build()
+    }
+
+    private fun getAjaxHeaders(referer: String): Headers {
+        return Headers.Builder()
+            .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .add("Accept", "application/json, text/javascript, */*; q=0.01")
+            .add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+            .add("Origin", settings.baseUrl)
+            .add("Referer", referer)
+            .add("X-Requested-With", "XMLHttpRequest")
+            .add("X-App-Hdrezka-App", "1")
+            .build()
+    }
+
     override suspend fun search(query: String): SearchResponse {
         return try {
-            val searchUri = "${settings.corsHostOrDefault()}/search/?do=search&subaction=search&q=${URLEncoder.encode(query, "UTF-8")}"
-
-            val headers = mapOf(
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Cache-Control" to "no-cache",
-                "DNT" to "1",
-                "Pragma" to "no-cache",
-                "Referer" to "${settings.corsHost ?: settings.host}/"
-            )
-
-            val searchHtml = get(searchUri, headers) ?: return SearchResponse(
-                results = emptyList(),
-                error = "Failed to fetch search results"
-            )
-
-            // Проверка на ошибки доступа
-            if (searchHtml.contains("class=\"error-code\"") && searchHtml.lowercase().contains("ошибка доступа")) {
-                val errorMsg = when {
-                    searchHtml.contains("(105)") || searchHtml.contains(">105<") || searchHtml.contains("(403)") -> 
-                        "Ошибка доступа (105) - IP-адрес заблокирован"
-                    searchHtml.contains("(101)") || searchHtml.contains(">101<") -> 
-                        "Ошибка доступа (101) - Аккаунт заблокирован"
-                    else -> "Ошибка доступа"
-                }
-                return SearchResponse(results = emptyList(), error = errorMsg)
-            }
-
-            val results = mutableListOf<SearchResult>()
-            val normalizedQuery = normalizeSearchName(query)
-
-            // Парсим результаты поиска из HTML
-            val rows = searchHtml.split("\"b-content__inline_item\"")
-            for (row in rows.drop(1)) {
-                val hrefMatch = Regex("href=\"https?://[^/]+/([^\"]+)\">([^<]+)</a> ?<div>([0-9]{4})").find(row)
-                if (hrefMatch != null) {
-                    val href = hrefMatch.groupValues[1]
-                    val title = hrefMatch.groupValues[2].trim()
-                    val year = hrefMatch.groupValues[3].toIntOrNull() ?: 0
-
-                    if (href.isNotEmpty() && title.isNotEmpty()) {
-                        val imgMatch = Regex("<img src=\"([^\"]+)\"").find(row)
-                        val poster = imgMatch?.groupValues?.get(1) ?: ""
-
-                        // Проверяем совпадение названия
-                        val normalizedTitle = normalizeSearchName(title)
-                        if (normalizedTitle.contains(normalizedQuery) || normalizedQuery.contains(normalizedTitle)) {
-                            results.add(
-                                SearchResult(
-                                    id = href,
-                                    name = title,
-                                    type = if (row.contains("series") || row.contains("сериал")) "series" else "movie",
-                                    year = year,
-                                    poster = poster
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            SearchResponse(results = results, total = results.size)
+            val encodedQuery = URLEncoder.encode(query, "UTF-8")
+            val url = "${settings.baseUrl}/engine/ajax/search.php?q=$encodedQuery"
+            val request = Request.Builder().url(url).headers(getPageHeaders()).build()
+            val response = client.newCall(request).execute()
+            val html = response.body?.string() ?: return SearchResponse(emptyList(), "Empty response")
+            SearchResponse(parseAjaxSearchResults(html))
         } catch (e: Exception) {
-            SearchResponse(
-                results = emptyList(),
-                error = e.message ?: "Unknown error"
-            )
+            SearchResponse(emptyList(), "Error: ${e.message}")
         }
     }
 
-    /**
-     * Получить плеер для фильма/сериала
-     * Реализует логику получения потоков из Lampac с поддержкой ajax и кэша
-     * Использует метод Movie из RezkaInvoke.cs
-     */
     override suspend fun getPlayer(
         id: String,
         type: String,
@@ -121,243 +90,155 @@ class RezkaParser(
         episode: Int?
     ): PlayerResponse {
         return try {
-            val proxy = proxyManager.get()
-            val cacheKey = "rezka:player:$id:$type:$season:$episode"
+            val pageUrl = if (id.startsWith("http")) id else "${settings.baseUrl}$id"
 
-            // Используем кэш для ускорения
-            val result = MemoryCache.get(cacheKey, ttlSeconds = 600) {
-                getPlayerInternal(id, type, season, episode, proxy)
-            }
+            val pageRequest = Request.Builder().url(pageUrl).headers(getPageHeaders()).build()
+            val pageResponse = client.newCall(pageRequest).execute()
+            val pageHtml = pageResponse.body?.string() ?: return PlayerResponse(success = false, error = "Failed to load page")
 
-            result
-        } catch (e: Exception) {
-            PlayerResponse(error = e.message ?: "Unknown error")
-        }
-    }
+            val initPattern = Pattern.compile("initCDN(?:Series|Movies)Events\\(\\d+,\\s*(\\d+),.+?(\\{.*?\\})\\);")
+            val matcher = initPattern.matcher(pageHtml)
 
-    /**
-     * Внутренняя логика получения плеера
-     * Реализует логику из RezkaInvoke.Movie()
-     */
-    private suspend fun getPlayerInternal(
-        id: String,
-        type: String,
-        season: Int?,
-        episode: Int?,
-        proxy: String?
-    ): PlayerResponse {
-        val corsHost = settings.corsHostOrDefault()
-        val timestamp = System.currentTimeMillis() / 1000
-        val random = (101..999).random()
-        val apiUrl = "$corsHost/ajax/get_cdn_series/?t=${timestamp}${random}"
+            var trashUrl: String = ""
+            var translatorId: String = ""
+            var postId: String = ""
 
-        // Формируем данные для POST запроса как в Lampac
-        val data = when {
-            type == "series" && season != null && episode != null -> {
-                "id=$id&translator_id=1&season=$season&episode=$episode&favs=&action=get_stream"
-            }
-            type == "series" && season != null -> {
-                "id=$id&translator_id=1&season=$season&favs=&action=get_stream"
-            }
-            else -> {
-                "id=$id&translator_id=1&is_camrip=0&is_ads=0&is_director=0&favs=&action=get_movie"
-            }
-        }
+            // Пытаемся найти данные на странице
+            if (matcher.find()) {
+                translatorId = matcher.group(1) // ID озвучки по умолчанию
+                val jsonConfigString = matcher.group(2) // JSON конфиг прямо из HTML
 
-        val headers = mapOf(
-            "Accept" to "application/json, text/javascript, */*; q=0.01",
-            "Cache-Control" to "no-cache",
-            "DNT" to "1",
-            "Origin" to corsHost,
-            "Pragma" to "no-cache",
-            "Referer" to "$corsHost/$id",
-            "Sec-Fetch-Dest" to "empty",
-            "Sec-Fetch-Mode" to "cors",
-            "Sec-Fetch-Site" to "same-origin",
-            "X-Requested-With" to "XMLHttpRequest",
-            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
-        )
+                val isDefaultRequest = (season == null && episode == null) || (season == 1 && episode == 1)
 
-        val response = post(
-            apiUrl,
-            data,
-            headers,
-            proxy = proxy,
-            realIp = settings.realIp
-        ) ?: return PlayerResponse(success = false, error = "Failed to fetch data from Rezka API")
+                if (isDefaultRequest) {
+                    try {
+                        val jsonConfig = JSONObject(jsonConfigString)
+                        trashUrl = jsonConfig.optString("streams") // В конфиге ключ 'streams'
+                    } catch (e: Exception) {
 
-        try {
-            val json = JSONObject(response)
-            
-            // Проверяем наличие ошибок в ответе
-            if (json.has("error") && !json.isNull("error")) {
-                val errorMsg = json.optString("error")
-                return PlayerResponse(success = false, error = "Rezka API error: $errorMsg")
-            }
-            
-            val url = json.optString("url")
-
-            if (url.isEmpty() || url.lowercase() == "false") {
-                return PlayerResponse(success = false, error = "No URL in response. Response: ${response.take(200)}")
-            }
-
-            // Парсим потоки из URL (как в getStreamLink)
-            val streams = parseStreamLinks(url)
-
-            if (streams.isEmpty()) {
-                return PlayerResponse(success = false, error = "No streams found in URL. Decoded data length: ${url.length}")
-            }
-
-            // Формируем плейлист с разными качествами
-            val playlist = streams.map { (quality, streamUrl) ->
-                PlaylistItem(
-                    url = streamUrl,
-                    quality = quality,
-                    type = if (streamUrl.contains(".m3u8") || streamUrl.contains(":hls:")) "hls" else "video"
-                )
-            }
-
-            // Основной URL - первый поток
-            val mainUrl = streams.values.firstOrNull() ?: return PlayerResponse(success = false, error = "No valid stream URL")
-
-            return PlayerResponse(
-                url = mainUrl,
-                playlist = playlist,
-                success = true
-            )
-        } catch (e: Exception) {
-            return PlayerResponse(success = false, error = "Parse error: ${e.message}. Response: ${response.take(200)}")
-        }
-    }
-
-    /**
-     * Парсить потоки из закодированного URL
-     * Реализует логику из getStreamLink в RezkaInvoke.cs
-     */
-    private fun parseStreamLinks(encodedData: String): Map<String, String> {
-        val streams = mutableMapOf<String, String>()
-
-        try {
-            // Декодируем base64 если нужно
-            val data = decodeBase64(encodedData)
-
-            // Парсим потоки по качеству [2160p], [1080p], [720p], [480p], [360p]
-            val qualities = listOf("2160p", "1080p", "720p", "480p", "360p")
-            for (quality in qualities) {
-                val pattern = Regex("""\[($quality|[^\]]+$quality[^\]]+)\]([^,\[]+)""")
-                val match = pattern.find(data)
-                if (match != null) {
-                    val urlLine = match.groupValues[2]
-                    if (urlLine.contains(".mp4") || urlLine.contains(".m3u8")) {
-                        val urlMatch = Regex("""(https?://[^\[\n\r, ]+)""").find(urlLine)
-                        if (urlMatch != null) {
-                            var streamUrl = urlMatch.groupValues[1]
-
-                            // Обработка HLS
-                            if (settings.hls) {
-                                if (!streamUrl.endsWith(".m3u8")) {
-                                    streamUrl += ":hls:manifest.m3u8"
-                                }
-                            } else {
-                                streamUrl = streamUrl.replace(":hls:manifest.m3u8", "")
-                            }
-
-                            streams[quality] = streamUrl
-                        }
                     }
                 }
             }
 
-            // Если ничего не найдено, пытаемся найти любой URL
-            if (streams.isEmpty()) {
-                val anyUrlMatch = Regex("""(https?://[^\[\n\r, ]+)""").find(data)
-                if (anyUrlMatch != null) {
-                    var streamUrl = anyUrlMatch.groupValues[1]
-                    if (settings.hls && !streamUrl.endsWith(".m3u8")) {
-                        streamUrl += ":hls:manifest.m3u8"
-                    }
-                    streams["auto"] = streamUrl
+            val postIdMatcher = Pattern.compile("initCDN(?:Series|Movies)Events\\(\\s*(\\d+)").matcher(pageHtml)
+            if (postIdMatcher.find()) {
+                postId = postIdMatcher.group(1)
+            }
+
+            if (trashUrl.isEmpty()) {
+                if (postId.isEmpty() || translatorId.isEmpty()) {
+                    if (pageHtml.contains("g-recaptcha")) return PlayerResponse(success = false, error = "Captcha detected")
+                    return PlayerResponse(success = false, error = "Could not parse IDs")
                 }
+
+                val streamUrl = "${settings.baseUrl}/ajax/get_cdn_series/?t=$translatorId"
+                val formBody = FormBody.Builder()
+                    .add("id", postId)
+                    .add("translator_id", translatorId)
+                    .add("action", if (type == "series") "get_stream" else "get_movie")
+
+                if (type == "series" && season != null && episode != null) {
+                    formBody.add("s", season.toString())
+                    formBody.add("e", episode.toString())
+                }
+
+                val streamRequest = Request.Builder()
+                    .url(streamUrl)
+                    .post(formBody.build())
+                    .headers(getAjaxHeaders(pageUrl))
+                    .build()
+
+                val streamResponse = client.newCall(streamRequest).execute()
+                val responseJson = streamResponse.body?.string() ?: return PlayerResponse(success = false, error = "Empty AJAX response")
+
+                val jsonObject = JSONObject(responseJson)
+                if (!jsonObject.getBoolean("success")) {
+                    return PlayerResponse(success = false, error = "API Error: ${jsonObject.optString("message")}")
+                }
+                trashUrl = jsonObject.optString("url")
             }
+
+            if (trashUrl.isEmpty()) {
+                return PlayerResponse(success = false, error = "No video URL found")
+            }
+
+            // 4. Декодирование
+            val decodedString = RezkaDecoder.decode(trashUrl)
+            val playlist = RezkaDecoder.parseQualities(decodedString)
+
+            if (playlist.isEmpty()) {
+                if (decodedString.startsWith("http")) {
+                    return PlayerResponse(true, decodedString, listOf(PlaylistItem(decodedString, "video", "Default")))
+                }
+                return PlayerResponse(success = false, error = "Failed to parse: $decodedString")
+            }
+
+            return PlayerResponse(true, playlist.last().url, playlist.reversed())
+
         } catch (e: Exception) {
-            // Если не удалось распарсить, возвращаем исходный URL
-            streams["auto"] = encodedData
-        }
-
-        return streams
-    }
-
-    /**
-     * Декодировать base64 данные
-     * Реализует логику из decodeBase64 в RezkaInvoke.cs
-     */
-    private fun decodeBase64(data: String): String {
-        if (!data.startsWith("#")) {
-            return data
-        }
-
-        try {
-            var decoded = data.removePrefix("#").removePrefix("#")
-
-            // Удаляем мусорные строки
-            val trashList = listOf(
-                "JCQhIUAkJEBeIUAjJCRA", "QEBAQEAhIyMhXl5e", "IyMjI14hISMjIUBA",
-                "Xl5eIUAjIyEhIyM=", "JCQjISFAIyFAIyM="
-            )
-
-            for (trash in trashList) {
-                decoded = decoded.replace("//_//$trash", "")
-            }
-
-            try {
-                val bytes = java.util.Base64.getDecoder().decode(decoded)
-                return String(bytes, Charsets.UTF_8)
-            } catch (e: Exception) {
-                decoded = Regex("//[^/]+_//").replace(decoded, "").replace("//_//", "")
-                val bytes = java.util.Base64.getDecoder().decode(decoded)
-                return String(bytes, Charsets.UTF_8)
-            }
-        } catch (e: Exception) {
-            return data
+            e.printStackTrace()
+            return PlayerResponse(success = false, error = "Rezka Error: ${e.message}")
         }
     }
-
     /**
-     * Получить информацию о сериале (сезоны и эпизоды)
-     */
+    * Получить информацию о сезонах и эпизодах со страницы сериала.
+    * @param id URL страницы сериала (например, https://hdrezka.me/...html)
+    */
     suspend fun getSeriesInfo(id: String): Map<Int, List<Int>>? {
         return try {
-            val contentUrl = "${settings.corsHostOrDefault()}/$id"
-            val contentHtml = get(contentUrl) ?: return null
+            val pageUrl = if (id.startsWith("http")) id else "${settings.baseUrl}$id"
 
-            val seasons = mutableMapOf<Int, List<Int>>()
+            // 1. Загружаем страницу
+            val request = Request.Builder().url(pageUrl).headers(getPageHeaders()).build()
+            val response = client.newCall(request).execute()
+            val html = response.body?.string() ?: return null
 
-            // Ищем информацию о сезонах в HTML
-            val seasonPattern = Regex("""<a href="[^"]*\?s=(\d+)[^"]*">([^<]+)</a>""")
-            val seasonMatches = seasonPattern.findAll(contentHtml)
+            // 2. Парсим эпизоды регуляркой
+            // Ищем теги <a class="b-simple_episode__item" ... data-season_id="X" data-episode_id="Y"
+            // Используем [^>]* чтобы пропустить любые другие атрибуты между ними
+            val regex = "class=\"b-simple_episode__item[^>]*data-season_id=\"(\\d+)\"[^>]*data-episode_id=\"(\\d+)\"".toRegex()
 
-            for (match in seasonMatches) {
-                val seasonNum = match.groupValues[1].toIntOrNull() ?: continue
-                val episodes = mutableListOf<Int>()
+            val seasons = mutableMapOf<Int, MutableList<Int>>()
 
-                // Для каждого сезона ищем эпизоды
-                val episodePattern = Regex("""<a href="[^"]*\?s=$seasonNum&e=(\d+)[^"]*">([^<]+)</a>""")
-                val episodeMatches = episodePattern.findAll(contentHtml)
+            regex.findAll(html).forEach { match ->
+                val season = match.groupValues[1].toInt()
+                val episode = match.groupValues[2].toInt()
 
-                for (episodeMatch in episodeMatches) {
-                    val episodeNum = episodeMatch.groupValues[1].toIntOrNull() ?: continue
-                    episodes.add(episodeNum)
-                }
-
-                if (episodes.isNotEmpty()) {
-                    seasons[seasonNum] = episodes.sorted()
-                }
+                seasons.getOrPut(season) { mutableListOf() }.add(episode)
             }
 
-            if (seasons.isNotEmpty()) seasons else null
+            if (seasons.isEmpty()) return null
+
+            // 3. Сортируем эпизоды и сезоны
+            val sortedSeasons = mutableMapOf<Int, List<Int>>()
+            seasons.toSortedMap().forEach { (season, episodes) ->
+                sortedSeasons[season] = episodes.sorted()
+            }
+
+            return sortedSeasons
+
         } catch (e: Exception) {
-            null
+            e.printStackTrace()
+            return null
         }
     }
 
+    private fun parseAjaxSearchResults(html: String): List<RezkaSearchItem> {
+        val list = mutableListOf<RezkaSearchItem>()
+        val items = html.split("</li>")
+        for (item in items) {
+            if (!item.contains("<a href=")) continue
+            val urlMatcher = Pattern.compile("href=\"([^\"]+)\"").matcher(item)
+            val url = if (urlMatcher.find()) urlMatcher.group(1) else ""
+            val titleMatcher = Pattern.compile("<span class=\"enty\">([^<]+)</span>").matcher(item)
+            val title = if (titleMatcher.find()) titleMatcher.group(1) else ""
+            val yearMatcher = Pattern.compile("\\((\\d{4})").matcher(item)
+            val year = if (yearMatcher.find()) yearMatcher.group(1) else null
+            val type = if (item.contains("сериал") || url.contains("/series/") || item.contains("мульт")) "series" else "movie"
+            if (url.isNotEmpty() && title.isNotEmpty()) {
+                list.add(RezkaSearchItem(url, title, year, null, type))
+            }
+        }
+        return list
+    }
 }

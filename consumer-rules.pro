@@ -23,3 +23,4 @@
 
 # Keep Coroutines
 -keep class kotlinx.coroutines.** { *; }
+и 

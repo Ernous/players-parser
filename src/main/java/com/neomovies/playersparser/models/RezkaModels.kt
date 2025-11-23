@@ -1,60 +1,86 @@
 package com.neomovies.playersparser.models
 
-/**
- * Модели для Rezka парсера
- */
-
-data class RezkaSearchModel(
-    val href: String? = null,
-    val searchUri: String? = null,
-    val similar: List<SimilarModel>? = null,
-    val isEmpty: Boolean = false,
-    val content: String? = null
-)
-
-data class SimilarModel(
-    val title: String,
-    val year: String,
-    val href: String,
-    val img: String
-)
-
-data class RezkaMovieModel(
-    val streams: Map<String, String>? = null, // quality -> url
-    val defaultQuality: String? = null,
-    val error: String? = null
-)
-
-data class RezkaEpisodes(
-    val seasons: Map<Int, List<RezkaEpisode>>? = null,
-    val error: String? = null
-)
-
-data class RezkaEpisode(
-    val episode: Int,
-    val title: String? = null,
-    val streams: Map<String, String>? = null
-)
+import java.util.Base64
+import java.nio.charset.StandardCharsets
 
 data class RezkaSettings(
-    val host: String = "https://hdrezka.ag",
+    val baseUrl: String = "https://hdrezka.me",
     val login: String? = null,
-    val passwd: String? = null,
-    val premium: Boolean = false,
-    val reserve: Boolean = false,
-    val uacdn: String? = null,
-    val forceua: Boolean = false,
-    val xrealip: Boolean = false,
-    val xapp: Boolean = false,
-    val hls: Boolean = true,
-    val corsHost: String? = "https://cors.apn.monster",
-    val realIp: String? = null,
-    val proxies: List<String> = emptyList()
-) {
-    fun corsHostOrDefault(): String {
-        return if (corsHost != null) {
-            val clean = host.removePrefix("https://").removePrefix("http://")
-            "${corsHost}/https://${clean}"
-        } else host
+    val password: String? = null
+)
+
+data class RezkaSearchItem(
+    val url: String,
+    val title: String,
+    val year: String?,
+    val poster: String?,
+    val type: String
+)
+
+object RezkaDecoder {
+    private val TRASH_STRINGS = listOf(
+        "IyMjI14hISMjIUBA",
+        "QEBAQEAhIyMhXl5e",
+        "JCQhIUAkJEBeIUAjJCRA",
+        "JCQjISFAIyFAIyM=",
+        "Xl5eIUAjIyEhIyM="
+    )
+
+    fun decode(data: String): String {
+        if (!data.startsWith("#h")) return data
+        try {
+            var url = data.removePrefix("#h")
+            for (i in 0 until 2) {
+                url = url.replace("//_//", "")
+                TRASH_STRINGS.forEach { trash ->
+                    url = url.replace(trash, "")
+                }
+            }
+
+            // Пытаемся декодировать результат очистки
+            val decoded = decodeBase64Safe(url)
+            if (decoded.contains("http")) return decoded
+
+        } catch (e: Exception) {
+
+        }
+        try {
+            val trashString = data.removePrefix("#h")
+            if (trashString.contains("//_//")) {
+                val parts = trashString.split("//_//")
+                val sb = StringBuilder()
+                for (part in parts) {
+                    sb.append(decodeBase64Safe(part))
+                }
+                return sb.toString()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return data
+    }
+
+    private fun decodeBase64Safe(input: String): String {
+        return try {
+            val decoder = Base64.getDecoder()
+            val bytes = decoder.decode(input)
+            String(bytes, StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    fun parseQualities(decodedUrl: String): List<PlaylistItem> {
+        val result = mutableListOf<PlaylistItem>()
+        val regex = "\\[([^\\]]+)\\](https?://[^\\s,]+)".toRegex()
+
+        regex.findAll(decodedUrl).forEach { match ->
+            val qualityLabel = match.groupValues[1]
+            val streamUrl = match.groupValues[2]
+            val type = if (streamUrl.contains(".m3u8")) "hls" else "video"
+            result.add(PlaylistItem(streamUrl, type, qualityLabel))
+        }
+        return result
     }
 }
