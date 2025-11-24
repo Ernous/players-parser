@@ -35,7 +35,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.Ernous:players-parser:1.0.0")
+    implementation("com.github.Ernous:players-parser:1.0.1")
 }
 ```
 
@@ -139,9 +139,4 @@ src/main/java/com/neomovies/playersparser/
 *   **[n0madic/go-hdrezka](https://github.com/n0madic/go-hdrezka)**
 
 ## Лицензия
-
 [Apache 2.0](LICENSE)
-
-## Автор
-
-Erno
